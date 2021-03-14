@@ -108,6 +108,7 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
   // Strong neighbor aggregation related params
   float aux_proposal_number;
   float aux_max_conf;
+  int64_t aux_max_pos = 0;
 
   for (int64_t i = 0; i < nboxes; i++) {
     auto max_score = sc[i];
@@ -148,6 +149,7 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
     // vars for sna
     aux_max_conf = 0.0;
     aux_proposal_number = 0.0;
+    aux_max_pos = pos;
 
     pos = i + 1;
     while (pos < nboxes) {
@@ -176,6 +178,7 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
         if (sc[pos] > aux_max_conf)
         {
           aux_max_conf = sc[pos];
+          aux_max_pos = pos;
         }
       }
 
@@ -197,8 +200,12 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
     }
 
     // Update target box score according to SNA.
-    if (sna_thresh > iou_threshold)
+    if (sna_thresh > iou_threshold && aux_proposal_number > 0.5 && aux_max_conf > min_score)
     {
+      //de[i * 5 + 0] = (x1[i] * sc[i] + aux_max_conf * x1[aux_max_pos]) / (sc[i] + aux_max_conf);
+      //de[i * 5 + 1] = (y1[i] * sc[i] + aux_max_conf * y1[aux_max_pos]) / (sc[i] + aux_max_conf);
+      //de[i * 5 + 2] = (x2[i] * sc[i] + aux_max_conf * x2[aux_max_pos]) / (sc[i] + aux_max_conf);
+      //de[i * 5 + 3] = (y2[i] * sc[i] + aux_max_conf * y2[aux_max_pos]) / (sc[i] + aux_max_conf);
       sc[i] = sc[i] + (1.0 - sc[i]) * (aux_proposal_number / (aux_proposal_number + 1.0)) * aux_max_conf;
       de[i * 5 + 4] = sc[i];
     }
