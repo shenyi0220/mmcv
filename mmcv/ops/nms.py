@@ -83,7 +83,7 @@ class SoftNMSop(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, boxes, scores, iou_threshold, sigma, min_score, method,
-                offset):
+                offset, sna_thresh):
         dets = boxes.new_empty((boxes.size(0), 5), device='cpu')
         inds = ext_module.softnms(
             boxes.cpu(),
@@ -93,12 +93,13 @@ class SoftNMSop(torch.autograd.Function):
             sigma=float(sigma),
             min_score=float(min_score),
             method=int(method),
-            offset=int(offset))
+            offset=int(offset),
+            sna_thresh=float(sna_thresh))
         return dets, inds
 
     @staticmethod
     def symbolic(g, boxes, scores, iou_threshold, sigma, min_score, method,
-                 offset):
+                 offset, sna_thresh):
         from packaging import version
         assert version.parse(torch.__version__) >= version.parse('1.7.0')
         nms_out = g.op(
@@ -110,6 +111,7 @@ class SoftNMSop(torch.autograd.Function):
             min_score_f=float(min_score),
             method_i=int(method),
             offset_i=int(offset),
+            sna_thresh_f=float(sna_thresh),
             outputs=2)
         return nms_out
 
@@ -184,7 +186,8 @@ def soft_nms(boxes,
              sigma=0.5,
              min_score=1e-3,
              method='linear',
-             offset=0):
+             offset=0,
+             sna_thresh=0.0):
     """Dispatch to only CPU Soft NMS implementations.
 
     The input can be either a torch tensor or numpy array.
@@ -198,6 +201,7 @@ def soft_nms(boxes,
         min_score (float): score filter threshold
         method (str): either 'linear' or 'gaussian'
         offset (int, 0 or 1): boxes' width or height is (x2 - x1 + offset).
+        sna_thresh (float, 0.0-1.0): If it is set greater than iou_threshold, SNA is enabled.
 
     Returns:
         tuple: kept dets(boxes and scores) and indice, which is always the \
@@ -238,14 +242,15 @@ def soft_nms(boxes,
             'sigma': float(sigma),
             'min_score': min_score,
             'method': method_dict[method],
-            'offset': int(offset)
+            'offset': int(offset),
+            'sna_thresh': float(sna_thresh)
         }
         inds = ext_module.softnms(*indata_list, **indata_dict)
     else:
         dets, inds = SoftNMSop.apply(boxes.cpu(), scores.cpu(),
                                      float(iou_threshold), float(sigma),
                                      float(min_score), method_dict[method],
-                                     int(offset))
+                                     int(offset), float(sna_thresh))
 
     dets = dets[:inds.size(0)]
 

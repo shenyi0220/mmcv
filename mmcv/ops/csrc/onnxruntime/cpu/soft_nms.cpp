@@ -15,6 +15,7 @@ SoftNmsKernel::SoftNmsKernel(OrtApi api, const OrtKernelInfo *info)
   min_score_ = ort_.KernelInfoGetAttribute<float>(info, "min_score");
   method_ = ort_.KernelInfoGetAttribute<int64_t>(info, "method");
   offset_ = ort_.KernelInfoGetAttribute<int64_t>(info, "offset");
+  sna_thresh_ = ort_.KernelInfoGetAttribute<float>(info, "sna_thresh");
 
   // create allocator
   allocator_ = Ort::AllocatorWithDefaultOptions();
@@ -28,6 +29,7 @@ void SoftNmsKernel::Compute(OrtKernelContext *context) {
   const T min_score = T(min_score_);
   const int method = int(method_);
   const T offset = T(offset_);
+  const T sna_thresh = T(sna_thresh_);
 
   const OrtValue *boxes = ort_.KernelContext_GetInput(context, 0);
   const T *boxes_data =

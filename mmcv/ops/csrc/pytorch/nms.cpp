@@ -79,7 +79,7 @@ Tensor nms(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
 
 Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
                    float iou_threshold, float sigma, float min_score,
-                   int method, int offset) {
+                   int method, int offset, float sna_thresh) {
   if (boxes.numel() == 0) {
     return at::empty({0}, boxes.options().dtype(at::kLong));
   }
@@ -104,6 +104,10 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
   int64_t pos = 0;
   Tensor inds_t = at::arange(nboxes, boxes.options().dtype(at::kLong));
   auto inds = inds_t.data_ptr<int64_t>();
+
+  // Strong neighbor aggregation related params
+  float aux_proposal_number;
+  float aux_max_conf;
 
   for (int64_t i = 0; i < nboxes; i++) {
     auto max_score = sc[i];
@@ -141,6 +145,10 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
     areas[i] = iarea;
     inds[i] = iind;
 
+    // vars for sna
+    aux_max_conf = 0.0;
+    aux_proposal_number = 0.0;
+
     pos = i + 1;
     while (pos < nboxes) {
       auto xx1 = std::max(ix1, x1[pos]);
@@ -161,6 +169,16 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
       } else if (method == 2) {
         weight = std::exp(-(ovr * ovr) / sigma);
       }
+
+      // update sna related params.
+      if (sna_thresh > iou_threshold && ovr >= sna_thresh) {
+        aux_proposal_number = aux_proposal_number + 1.0;
+        if (sc[pos] > aux_max_conf)
+        {
+          aux_max_conf = sc[pos];
+        }
+      }
+
       sc[pos] *= weight;
       // if box score falls below threshold, discard the box by
       // swapping with last box update N
@@ -177,17 +195,25 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
       }
       pos = pos + 1;
     }
+
+    // Update target box score according to SNA.
+    if (sna_thresh > iou_threshold)
+    {
+      sc[i] = sc[i] + (1.0 - sc[i]) * (aux_proposal_number / (aux_proposal_number + 1.0)) * aux_max_conf;
+      de[i * 5 + 4] = sc[i];
+    }
+
   }
   return inds_t.slice(0, 0, nboxes);
 }
 
 Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
-               float sigma, float min_score, int method, int offset) {
+               float sigma, float min_score, int method, int offset, float sna_thresh) {
   if (boxes.device().is_cuda()) {
     AT_ERROR("softnms is not implemented on GPU");
   } else {
     return softnms_cpu(boxes, scores, dets, iou_threshold, sigma, min_score,
-                       method, offset);
+                       method, offset, sna_thresh);
   }
 }
 

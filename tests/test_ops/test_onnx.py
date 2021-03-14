@@ -204,13 +204,15 @@ def test_softnms():
             iou_threshold=_iou_threshold,
             sigma=_sigma,
             min_score=_min_score,
-            method=_method)
+            method=_method,
+            sna_thresh=0.0)
         nms = partial(
             soft_nms,
             iou_threshold=_iou_threshold,
             sigma=_sigma,
             min_score=_min_score,
-            method=_method)
+            method=_method,
+            sna_thresh=0.0)
 
         wrapped_model = WrapFunction(nms)
         wrapped_model.cpu().eval()

@@ -8,7 +8,7 @@ at::Tensor nms(at::Tensor boxes, at::Tensor scores, float iou_threshold,
 
 at::Tensor softnms(at::Tensor boxes, at::Tensor scores, at::Tensor dets,
                    float iou_threshold, float sigma, float min_score,
-                   int method, int offset);
+                   int method, int offset, float sna_thresh);
 
 std::vector<std::vector<int> > nms_match(at::Tensor dets, float iou_threshold);
 

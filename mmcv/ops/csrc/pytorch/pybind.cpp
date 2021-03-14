@@ -109,7 +109,7 @@ void ms_deform_attn_backward(const Tensor &value, const Tensor &spatial_shapes,
 Tensor nms(Tensor boxes, Tensor scores, float iou_threshold, int offset);
 
 Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
-               float sigma, float min_score, int method, int offset);
+               float sigma, float min_score, int method, int offset, float sna_thresh);
 
 std::vector<std::vector<int>> nms_match(Tensor dets, float iou_threshold);
 
@@ -345,7 +345,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("softnms", &softnms, "softnms (CPU) ", py::arg("boxes"),
         py::arg("scores"), py::arg("dets"), py::arg("iou_threshold"),
         py::arg("sigma"), py::arg("min_score"), py::arg("method"),
-        py::arg("offset"));
+        py::arg("offset"), py::arg("sna_thresh"));
   m.def("nms_match", &nms_match, "nms_match (CPU) ", py::arg("dets"),
         py::arg("iou_threshold"));
   m.def("pixel_group", &pixel_group, "pixel group (CPU) ", py::arg("score"),

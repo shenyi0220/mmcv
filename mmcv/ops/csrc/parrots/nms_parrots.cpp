@@ -26,12 +26,12 @@ void nms_parrots(T& ctx, const SSElement& attr,
 }
 
 /*Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
- *                float sigma, float min_score, int method, int offset);*/
+ *                float sigma, float min_score, int method, int offset, float sna_thresh);*/
 template <typename T>
 void softnms_parrots(T& ctx, const SSElement& attr,
                      const OperatorBase::in_list_t& ins,
                      OperatorBase::out_list_t& outs) {
-  float iou_threshold, sigma, min_score;
+  float iou_threshold, sigma, min_score, sna_thresh;
   int method, offset;
   SSAttrs(attr)
       .get("iou_threshold", iou_threshold)
@@ -39,13 +39,14 @@ void softnms_parrots(T& ctx, const SSElement& attr,
       .get("min_score", min_score)
       .get("method", method)
       .get("offset", offset)
+      .get("sna_thresh", sna_thresh)
       .done();
   at::Tensor boxes, scores, dets;
   boxes = buildATensor(ctx, ins[0]);
   scores = buildATensor(ctx, ins[1]);
   dets = buildATensor(ctx, ins[2]);
   auto out = softnms(boxes, scores, dets, iou_threshold, sigma, min_score,
-                     method, offset);
+                     method, offset, sna_thresh);
   updateDArray(ctx, out, outs[0]);
 }
 
@@ -110,6 +111,7 @@ PARROTS_EXTENSION_REGISTER(softnms)
     .attr("min_score")
     .attr("method")
     .attr("offset")
+    .attr("sna_thresh")
     .input(3)
     .output(1)
     .apply(softnms_parrots<HostContext>)

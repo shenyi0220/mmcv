@@ -19,6 +19,7 @@ struct SoftNmsKernel {
   float min_score_;
   int64_t method_;
   int64_t offset_;
+  float sna_thresh_;
 };
 
 struct SoftNmsOp : Ort::CustomOpBase<SoftNmsOp, SoftNmsKernel> {
