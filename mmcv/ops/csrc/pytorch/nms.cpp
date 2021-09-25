@@ -101,6 +101,14 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
   auto areas = areas_t.data_ptr<float>();
   auto de = dets.data_ptr<float>();
 
+  // Positive message and negative messages
+  Tensor suppress_mat_t = at::zeros({nboxes, nboxes}, boxes.options());
+  auto supress_mat = suppress_mat_t.data_ptr<float>();
+  Tensor positive_msgs_t = at::zeros({6, nboxes}, boxes.options());
+  auto positive_msgs = positive_msgs_t.data_ptr<float>();
+  Tensor negative_msgs_t = at::zeros({3, nboxes}, boxes.options());
+  auto negative_msgs = negative_msgs_t.data_ptr<float>();
+
   int64_t pos = 0;
   Tensor inds_t = at::arange(nboxes, boxes.options().dtype(at::kLong));
   auto inds = inds_t.data_ptr<int64_t>();
@@ -150,6 +158,8 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
     aux_max_conf = 0.0;
     aux_proposal_number = 0.0;
     aux_max_pos = pos;
+    positive_msgs[6*i + 0] = aux_max_conf;
+    positive_msgs[6*i + 1] = aux_proposal_number;
 
     pos = i + 1;
     while (pos < nboxes) {
@@ -174,9 +184,11 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
 
       // update sna related params.
       if (sna_thresh > iou_threshold && ovr >= sna_thresh) {
+        positive_msgs[6*i + 1] = positive_msgs[6*i + 1] + 1.0;
         aux_proposal_number = aux_proposal_number + 1.0;
-        if (sc[pos] > aux_max_conf)
+        if (sc[pos] > positive_msgs[6*i + 0])
         {
+          positive_msgs[6*i + 0] = sc[pos];
           aux_max_conf = sc[pos];
           aux_max_pos = pos;
         }
@@ -206,12 +218,34 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
       //de[i * 5 + 1] = (y1[i] * sc[i] + aux_max_conf * y1[aux_max_pos]) / (sc[i] + aux_max_conf);
       //de[i * 5 + 2] = (x2[i] * sc[i] + aux_max_conf * x2[aux_max_pos]) / (sc[i] + aux_max_conf);
       //de[i * 5 + 3] = (y2[i] * sc[i] + aux_max_conf * y2[aux_max_pos]) / (sc[i] + aux_max_conf);
-      sc[i] = sc[i] + (1.0 - sc[i]) * (aux_proposal_number / (aux_proposal_number + 1.0)) * aux_max_conf;
+      sc[i] = sc[i] + (1.0 - sc[i]) * (positive_msgs[6*i + 1] / (positive_msgs[6*i + 1] + 1.0)) * positive_msgs[6*i + 0];
       de[i * 5 + 4] = sc[i];
     }
 
   }
+/*
+  // We filter out those boxes with scores greater than min scores
+  for (int64_t i = 0; i < nboxes; i++) {
+      // swapping with last box update N
+      if (sc[i] < min_score) {
+        x1[i] = x1[nboxes - 1];
+        y1[i] = y1[nboxes - 1];
+        x2[i] = x2[nboxes - 1];
+        y2[i] = y2[nboxes - 1];
+        sc[i] = sc[nboxes - 1];
+        areas[i] = areas[nboxes - 1];
+        inds[i] = inds[nboxes - 1];
+        nboxes = nboxes - 1;
+      }
+  }
+*/
   return inds_t.slice(0, 0, nboxes);
+}
+
+Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
+                   float iou_threshold, float sigma, float min_score,
+                   int method, int offset, float sna_thresh) {
+
 }
 
 Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
