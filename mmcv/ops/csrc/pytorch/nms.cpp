@@ -285,6 +285,8 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
   // Weights for positive and negative messages
   std::vector<float> alphas(10, 1.0f);
   std::vector<float> betas(10, 1.0f);
+  // Strategies for negative messages
+  std::vector<int> neg_strategies(10, 0); // 0 for strongest neighbors, 1 for closest neighbors.
 
   int64_t pos = 0;
   Tensor inds_t = at::arange(nboxes, boxes.options().dtype(at::kLong));
@@ -294,6 +296,9 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
   float max_suppress_time = 0.99f;// Suppression from boxA to boxB can only happen once.
   iou_thresholds[0] = iou_threshold;
   iou_thresholds[1] = iou_thresholds[0] + 0.1f;
+  //iou_thresholds[1] = iou_thresholds[0];
+  //neg_strategies[0] = 0;
+  //neg_strategies[1] = 1;
 
   for (int64_t iter = 0; iter < opt_max_iter; iter++) {
     std::fill(positive_msgs.begin(), positive_msgs.end(), 0.0f);
@@ -324,10 +329,18 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
         auto ovr = inter / (iarea + areas[pos] - inter);
 
         if (ovr > iou_thresholds[iter]) {
-          if (suppress_mat[i*nboxes + pos] < max_suppress_time && iscore > negative_msgs[3*pos + 1]) {
-            negative_msgs[3*pos + 0] = ovr;
-            negative_msgs[3*pos + 1] = iscore;
-            negative_msgs[3*pos + 2] = static_cast<float>(i);
+          if (neg_strategies[iter] == 0) {
+            if (suppress_mat[i*nboxes + pos] < max_suppress_time && iscore > negative_msgs[3*pos + 1]) {
+              negative_msgs[3*pos + 0] = ovr;
+              negative_msgs[3*pos + 1] = iscore;
+              negative_msgs[3*pos + 2] = static_cast<float>(i);
+            }
+          } else if (neg_strategies[iter] == 1) {
+            if (suppress_mat[i*nboxes + pos] < max_suppress_time && ovr > negative_msgs[3*pos + 0]) {
+              negative_msgs[3*pos + 0] = ovr;
+              negative_msgs[3*pos + 1] = iscore;
+              negative_msgs[3*pos + 2] = static_cast<float>(i);
+            }
           }
         }
 
