@@ -297,8 +297,8 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
   iou_thresholds[0] = iou_threshold;
   iou_thresholds[1] = iou_thresholds[0] + 0.1f;
   //iou_thresholds[1] = iou_thresholds[0];
-  //neg_strategies[0] = 0;
-  //neg_strategies[1] = 1;
+  neg_strategies[0] = 0;
+  neg_strategies[1] = 1;
 
   for (int64_t iter = 0; iter < opt_max_iter; iter++) {
     std::fill(positive_msgs.begin(), positive_msgs.end(), 0.0f);
