@@ -247,9 +247,22 @@ Tensor softnms_cpu(Tensor boxes, Tensor scores, Tensor dets,
   return inds_t.slice(0, 0, nboxes);
 }
 
-Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
-                   float iou_threshold, float sigma, float min_score,
-                   int method, int offset, float sna_thresh) {
+Tensor cp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
+                   float iou_threshold, float min_score,
+                   int offset, float wfa_thresh, int opt_id) {
+  /*
+  ** Implementation of Confidence Propagation Bounding Boxes Cluster for Object Detectors.
+  **
+  ** -boxes: The pytorch tensor containing box coordinates in the format of [N, 4].
+  ** -scores: The pytorch tensor containing scores in the format of [N,].
+  ** -dets: The result pytorch tensor buffer in the format of [N, 5].
+  ** -iou_threshold: The IOU threshold to construct the graphs.
+  ** -min_score: The miminum confidence value to filter out too weak boxes.
+  ** -offset: The offset used in IOU calculation, following the MMCV style.
+  ** -wfa_thresh: The IOU threshold to distinguish weak friends.
+  ** -opt_id: The config options(1-3), as corresponds to the Config1-Config3 described in the paper.
+  **
+  */
   if (boxes.numel() == 0) {
     return at::empty({0}, boxes.options().dtype(at::kLong));
   }
@@ -271,14 +284,11 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
   auto areas = areas_t.data_ptr<float>();
   auto de = dets.data_ptr<float>();
 
-  //Tensor suppress_mat_t = at::zeros({nboxes * nboxes}, boxes.options());
   // Suppress mat: [i, j]=m indicates that Det[i] suppressed Det[j] for m times.
   std::vector<float> suppress_mat(nboxes * nboxes, 0.0f);
   // Positive messages
-  //Tensor positive_msgs_t = at::zeros({6 * nboxes}, boxes.options());
   std::vector<float> positive_msgs(nboxes * 6, 0.0f);
   // Negative messages
-  //Tensor negative_msgs_t = at::zeros({3 * nboxes}, boxes.options()); // 0: ove, 1: max_conf, 2: max_conf_idx
   std::vector<float> negative_msgs(nboxes * 3, 0.0f);
   // Dynamic IOU thresholds for different iterations
   float iou_thresholds[10] = {0.0f};
@@ -292,13 +302,26 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
   Tensor inds_t = at::arange(nboxes, boxes.options().dtype(at::kLong));
   auto inds = inds_t.data_ptr<int64_t>();
 
+  // Set up main configs based on opt_id(config1, config2, config3).
+  // By default it's config1.
   int64_t opt_max_iter = 2;
   float max_suppress_time = 0.99f;// Suppression from boxA to boxB can only happen once.
   iou_thresholds[0] = iou_threshold;
   iou_thresholds[1] = iou_thresholds[0] + 0.1f;
-  //iou_thresholds[1] = iou_thresholds[0];
   neg_strategies[0] = 0;
   neg_strategies[1] = 1;
+  assert(opt_id == 1 || opt_id==2 || opt_id==3);
+  switch(opt_id) {
+    case 1:
+      break;
+    case 2:
+      iou_thresholds[1] = iou_thresholds[0] + 0.2f;
+      break;
+    case 3:
+      iou_thresholds[2] = iou_thresholds[0] + 0.2f;
+      max_suppress_time = 1.99f; // Suppression from boxA to boxB can happen twice.
+      break;
+  }
 
   for (int64_t iter = 0; iter < opt_max_iter; iter++) {
     std::fill(positive_msgs.begin(), positive_msgs.end(), 0.0f);
@@ -329,6 +352,7 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
         auto ovr = inter / (iarea + areas[pos] - inter);
 
         if (ovr > iou_thresholds[iter]) {
+          // Update negative messages(stronger box -> weaker box).
           if (neg_strategies[iter] == 0) {
             if (suppress_mat[i*nboxes + pos] < max_suppress_time && iscore > negative_msgs[3*pos + 1]) {
               negative_msgs[3*pos + 0] = ovr;
@@ -344,8 +368,9 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
           }
         }
 
-        // update sna related params.
-        if (ovr >= sna_thresh) {
+        // Update positive messages.
+        if (ovr >= wfa_thresh) {
+          // Update positive messages(weaker box -> stronger box).
           positive_msgs[6*i + 1] = positive_msgs[6*i + 1] + 1.0;
           if (sc[pos] > positive_msgs[6*i + 0]) {
             positive_msgs[6*i + 0] = sc[pos];
@@ -376,7 +401,8 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
     }
   }
 
-  // We sort the bounding boxes in descending order and filter out low conf boxes with too low scores
+  // To meet the mmcv and torchvision NMS API standard,
+  // we sort the bounding boxes in descending order and filter out low conf boxes with too low scores.
   for (int64_t i = 0; i < nboxes; i++) {
     auto max_score = sc[i];
     auto max_pos = i;
@@ -391,7 +417,7 @@ Tensor bp_cluster_cpu(Tensor boxes, Tensor scores, Tensor dets,
       pos = pos + 1;
     }
 
-    // check whether max conf is smaller than min score
+    // Check whether max conf is smaller than min score.
     if (max_score < min_score) {
       nboxes = i;
       break;
@@ -428,8 +454,8 @@ Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
   if (boxes.device().is_cuda()) {
     AT_ERROR("softnms is not implemented on GPU");
   } else {
-    return bp_cluster_cpu(boxes, scores, dets, iou_threshold, sigma, min_score,
-                          method, offset, sna_thresh);
+    return cp_cluster_cpu(boxes, scores, dets, iou_threshold, min_score,
+                          offset, sna_thresh, 3);
   }
 }
 
